@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Color
 import android.hardware.usb.UsbManager
 import android.os.Build
 import android.os.Bundle
@@ -20,6 +21,12 @@ import android.widget.Spinner
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import com.github.mikephil.charting.charts.ScatterChart
+import com.github.mikephil.charting.data.Entry
+import com.github.mikephil.charting.data.ScatterData
+import com.github.mikephil.charting.data.ScatterDataSet
+import com.github.mikephil.charting.interfaces.datasets.IScatterDataSet
+import com.github.mikephil.charting.renderer.ScatterChartRenderer
 import com.hoho.android.usbserial.driver.UsbSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import com.hoho.android.usbserial.driver.UsbSerialProber
@@ -32,7 +39,6 @@ import java.nio.ByteOrder
 class MainActivity : AppCompatActivity(), SerialInputOutputManager.Listener {
 
     private lateinit var fileLogger: FileLogger
-    // ... rest of your variables
 
     private val tlvParserMap: Map<Int, (ByteBuffer, Int, ParsedFrameData) -> Unit> = mapOf(
         MMWDEMO_OUTPUT_EXT_MSG_DETECTED_POINTS to ::parsePointCloudExtTLV,
@@ -45,6 +51,7 @@ class MainActivity : AppCompatActivity(), SerialInputOutputManager.Listener {
     private val dataBuffer = ByteArrayOutputStream()
     private var expectedPacketLength = 0
 
+    // --- UI Elements ---
     private lateinit var parsedDataText: TextView
     private lateinit var deviceSpinner: Spinner
     private lateinit var refreshButton: Button
@@ -53,7 +60,9 @@ class MainActivity : AppCompatActivity(), SerialInputOutputManager.Listener {
     private lateinit var closePortButton: Button
     private lateinit var consoleText: TextView
     private lateinit var consoleScrollView: ScrollView
+    private lateinit var scatterChart: ScatterChart // <-- NEW: Chart variable
 
+    // --- USB & Serial Port Variables ---
     private lateinit var usbManager: UsbManager
     private var availableDrivers = mutableListOf<UsbSerialDriver>()
     private var selectedDriver: UsbSerialDriver? = null
@@ -82,6 +91,7 @@ class MainActivity : AppCompatActivity(), SerialInputOutputManager.Listener {
 
         fileLogger = FileLogger(this)
 
+        // Find all UI elements
         parsedDataText = findViewById(R.id.parsedDataText)
         deviceSpinner = findViewById(R.id.deviceSpinner)
         refreshButton = findViewById(R.id.refreshButton)
@@ -90,6 +100,7 @@ class MainActivity : AppCompatActivity(), SerialInputOutputManager.Listener {
         closePortButton = findViewById(R.id.closePortButton)
         consoleText = findViewById(R.id.consoleText)
         consoleScrollView = findViewById(R.id.consoleScrollView)
+        scatterChart = findViewById(R.id.scatterChart) // <-- NEW: Find chart view
 
         usbManager = getSystemService(Context.USB_SERVICE) as UsbManager
 
@@ -99,18 +110,48 @@ class MainActivity : AppCompatActivity(), SerialInputOutputManager.Listener {
         closePortButton.setOnClickListener { closePort() }
 
         val filter = IntentFilter(ACTION_USB_PERMISSION)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        // Correctly handle receiver registration for different Android versions
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(usbPermissionReceiver, filter, RECEIVER_NOT_EXPORTED)
         } else {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                registerReceiver(usbPermissionReceiver, filter, RECEIVER_NOT_EXPORTED)
-            } else {
-                @Suppress("DEPRECATION")
-                registerReceiver(usbPermissionReceiver, filter)
-            }
+            @Suppress("DEPRECATION")
+            registerReceiver(usbPermissionReceiver, filter)
         }
 
+        setupChart() // <-- NEW: Configure the chart on startup
         refreshDeviceList()
+    }
+
+    // --- NEW: Function to configure the scatter plot's appearance ---
+    private fun setupChart() {
+        scatterChart.description.isEnabled = false
+        scatterChart.isDragEnabled = true
+        scatterChart.setScaleEnabled(true)
+        scatterChart.setPinchZoom(true)
+        scatterChart.setDrawGridBackground(true)
+
+        // --- CORRECTED LINE ---
+        scatterChart.setGridBackgroundColor(Color.DKGRAY) // Use the setter method
+
+        scatterChart.legend.isEnabled = false
+
+        // Configure X Axis
+        scatterChart.xAxis.textColor = Color.WHITE
+        scatterChart.xAxis.gridColor = Color.GRAY
+        scatterChart.xAxis.axisLineColor = Color.WHITE
+        scatterChart.xAxis.setLabelCount(6, true)
+        scatterChart.xAxis.axisMinimum = -10f
+        scatterChart.xAxis.axisMaximum = 10f
+
+        // Configure Y Axis
+        scatterChart.axisLeft.textColor = Color.WHITE
+        scatterChart.axisLeft.gridColor = Color.GRAY
+        scatterChart.axisLeft.axisLineColor = Color.WHITE
+        scatterChart.axisLeft.setLabelCount(6, true)
+        scatterChart.axisLeft.axisMinimum = 0f
+        scatterChart.axisLeft.axisMaximum = 20f
+
+        scatterChart.axisRight.isEnabled = false
     }
 
     override fun onNewData(data: ByteArray) {
@@ -166,7 +207,6 @@ class MainActivity : AppCompatActivity(), SerialInputOutputManager.Listener {
         closePort()
     }
 
-/*
     private fun processFrame(frameBytes: ByteArray) {
         val header = parseHeader(frameBytes.copyOfRange(0, 40))
         if (header == null) {
@@ -179,155 +219,36 @@ class MainActivity : AppCompatActivity(), SerialInputOutputManager.Listener {
         val payloadBytes = frameBytes.copyOfRange(40, frameBytes.size)
         val payloadBuffer = ByteBuffer.wrap(payloadBytes).order(ByteOrder.LITTLE_ENDIAN)
 
-        // --- Start Log Entry ---
         val logBuilder = StringBuilder()
         logBuilder.append("=====================================================\n")
         logBuilder.append("Frame: ${header.frameNum}, Detected Objects: ${header.numDetectedObj}, TLVs: ${header.numTLVs}\n")
-        val hexString = frameBytes.joinToString(" ") { "%02X".format(it) }
-        logBuilder.append("Raw Frame (${frameBytes.size} bytes): $hexString\n")
-        logBuilder.append("--- TLV Data ---\n")
 
-        // --- NEW DEBUGGING LOGIC ---
-        var pointCloudTlvFound = false
-        var sideInfoTlvFound = false
-        val receivedTlvTypes = mutableListOf<Int>()
-
-        // First pass to identify all TLV types present in the frame
-        val tempBuffer = payloadBuffer.asReadOnlyBuffer()
-        for (i in 0 until header.numTLVs) {
-            if (tempBuffer.remaining() < 8) break
-            val tlvType = tempBuffer.int
-            val tlvLength = tempBuffer.int
-            receivedTlvTypes.add(tlvType)
-            if (tlvType == MMWDEMO_OUTPUT_MSG_DETECTED_POINTS) pointCloudTlvFound = true
-            if (tlvType == MMWDEMO_OUTPUT_MSG_DETECTED_POINTS_SIDE_INFO) sideInfoTlvFound = true
-            if (tempBuffer.remaining() >= tlvLength) {
-                tempBuffer.position(tempBuffer.position() + tlvLength)
-            } else {
-                break
-            }
-        }
-        val debugMsg = "Point Cloud TLV (Type 1) Found: $pointCloudTlvFound, Side Info TLV (Type 7) Found: $sideInfoTlvFound"
-        appendToConsole("  -> $debugMsg")
-        logBuilder.append("  $debugMsg\n")
-        logBuilder.append("  Received TLV Types in this frame: $receivedTlvTypes\n")
-
-
-        // --- Main Parsing Loop ---
         for (i in 0 until header.numTLVs) {
             if (payloadBuffer.remaining() < 8) {
+                logBuilder.append("  [Warning] Not enough data for next TLV header. Stopping parse.\n")
                 frameData.parseError = 2
                 break
             }
+
             val tlvType = payloadBuffer.int
             val tlvLength = payloadBuffer.int
 
+            logBuilder.append("  [TLV #$i] Type: $tlvType, Length: $tlvLength\n")
+
             val parser = tlvParserMap[tlvType]
 
-            if (parser != null) {
-                val tlvPayload = payloadBuffer.slice().order(ByteOrder.LITTLE_ENDIAN)
-                tlvPayload.limit(tlvLength)
-                parser(tlvPayload, tlvLength, frameData)
-            }
-
-            if (payloadBuffer.remaining() >= tlvLength) {
-                payloadBuffer.position(payloadBuffer.position() + tlvLength)
-            } else {
+            if (payloadBuffer.remaining() < tlvLength) {
+                logBuilder.append("  [Error] Stated TLV length ($tlvLength) exceeds remaining buffer size (${payloadBuffer.remaining()}).\n")
                 frameData.parseError = 3
                 break
             }
 
-        }
-
-        // --- Log Parsed Data ---
-        if (frameData.targets.isNotEmpty()) {
-            logBuilder.append("--- Parsed Targets (${frameData.targets.size}) ---\n")
-            frameData.targets.forEach { target ->
-                logBuilder.append(
-                    String.format(
-                        "  ID: %-4d | Pos(X,Y,Z): (%6.2f, %6.2f, %6.2f) | Vel(X,Y,Z): (%6.2f, %6.2f, %6.2f)\n",
-                        target.tid, target.posX, target.posY, target.posZ, target.velX, target.velY, target.velZ
-                    )
-                )
-            }
-        }
-        if (frameData.points.isNotEmpty()) {
-            logBuilder.append("--- Parsed Points (${frameData.points.size}) ---\n")
-            frameData.points.forEach { point ->
-                logBuilder.append(
-                    String.format(
-                        "  Pos(X,Y,Z): (%6.2f, %6.2f, %6.2f) | Doppler: %6.2f | SNR: %4.1f | Noise: %4.1f\n",
-                        point.x, point.y, point.z, point.doppler, point.snr, point.noise
-                    )
-                )
-            }
-        }
-        logBuilder.append("=====================================================\n")
-
-        // Write the complete entry to the file
-        fileLogger.log(logBuilder.toString())
-
-        // Update the UI as before
-        updateParsedDataUI(frameData)
-    }
-*/
-    // In try1/MainActivity.kt
-
-    private fun processFrame(frameBytes: ByteArray) {
-        val header = parseHeader(frameBytes.copyOfRange(0, 40))
-        if (header == null) {
-            logToConsole("!! PARSER ERROR: Failed to parse frame header.", isError = true)
-            fileLogger.log("!! PARSER ERROR: Failed to parse frame header.")
-            return
-        }
-
-        val frameData = ParsedFrameData(header.frameNum, header.numDetectedObj)
-        val payloadBytes = frameBytes.copyOfRange(40, frameBytes.size)
-        val payloadBuffer = ByteBuffer.wrap(payloadBytes).order(ByteOrder.LITTLE_ENDIAN)
-
-        val logBuilder = StringBuilder()
-        logBuilder.append("=====================================================\n")
-        logBuilder.append("Frame: ${header.frameNum}, Detected Objects: ${header.numDetectedObj}, TLVs: ${header.numTLVs}\n")
-
-        // Loop through the number of TLVs specified in the frame header
-        for (i in 0 until header.numTLVs) {
-            // 1. Check if there's enough data for a TLV header (Type + Length = 8 bytes)
-            if (payloadBuffer.remaining() < 8) {
-                logBuilder.append("  [Warning] Not enough data for next TLV header. Stopping parse.\n")
-                frameData.parseError = 2 // Set an error code
-                break
-            }
-
-            // 2. Read the TLV header
-            val tlvType = payloadBuffer.int
-            val tlvLength = payloadBuffer.int // This is the length of the VALUE part
-
-            logBuilder.append("  [TLV #$i] Type: $tlvType, Length: $tlvLength\n")
-
-            // 3. Find the correct parser function for this TLV type
-            val parser = tlvParserMap[tlvType]
-
-            // 4. Check if we have enough data for the payload itself
-            if (payloadBuffer.remaining() < tlvLength) {
-                logBuilder.append("  [Error] Stated TLV length ($tlvLength) exceeds remaining buffer size (${payloadBuffer.remaining()}).\n")
-                frameData.parseError = 3 // Set an error code
-                break // Stop parsing this frame
-            }
-
-            // 5. If a parser exists, use it
             if (parser != null) {
-                // Create a 'slice' of the buffer for the parser function.
-                // This prevents the parser from accidentally reading too far.
                 val tlvPayload = payloadBuffer.slice().order(ByteOrder.LITTLE_ENDIAN)
                 tlvPayload.limit(tlvLength)
-
-                // Execute the parsing function (e.g., parsePointCloudExtTLV)
                 parser(tlvPayload, tlvLength, frameData)
             }
 
-            // 6. *** THE CRITICAL FIX ***
-            // Advance the buffer's position past this TLV's payload.
-            // This is the logic directly ported from the Python script's `offset += total_tlv_length`.
             payloadBuffer.position(payloadBuffer.position() + tlvLength)
         }
 
@@ -348,175 +269,89 @@ class MainActivity : AppCompatActivity(), SerialInputOutputManager.Listener {
 
         updateParsedDataUI(frameData)
     }
-    /*private fun processFrame(frameBytes: ByteArray) {
-        val header = parseHeader(frameBytes.copyOfRange(0, 40))
-        if (header == null) {
-            logToConsole("!! PARSER ERROR: Failed to parse frame header.", isError = true)
-            fileLogger.log("!! PARSER ERROR: Failed to parse frame header.")
-            return
-        }
 
-        val frameData = ParsedFrameData(header.frameNum, header.numDetectedObj)
-        val payloadBytes = frameBytes.copyOfRange(40, frameBytes.size)
-        val payloadBuffer = ByteBuffer.wrap(payloadBytes).order(ByteOrder.LITTLE_ENDIAN)
+    // --- NEW: Helper function to map SNR to a color ---
+    private fun getColorForSNR(snr: Float): Int {
+        // Define an SNR range for color mapping (e.g., 0 to 40 dB)
+        val minSnr = 0f
+        val maxSnr = 40f
 
-        // --- Start Log Entry ---
-        val logBuilder = StringBuilder()
-        logBuilder.append("=====================================================\n")
-        logBuilder.append("Frame: ${header.frameNum}, Detected Objects: ${header.numDetectedObj}, TLVs: ${header.numTLVs}\n")
-        val hexString = frameBytes.joinToString(" ") { "%02X".format(it) }
-        logBuilder.append("Raw Frame (${frameBytes.size} bytes): $hexString\n")
-        logBuilder.append("--- TLV Data ---\n")
+        // Normalize SNR to a 0.0 to 1.0 range
+        val normalizedSnr = ((snr - minSnr) / (maxSnr - minSnr)).coerceIn(0f, 1f)
 
-        for (i in 0 until header.numTLVs) {
-            if (payloadBuffer.remaining() < 8) {
-                frameData.parseError = 2
-                break
-            }
-            val tlvType = payloadBuffer.int
-            val tlvLength = payloadBuffer.int
+        // Interpolate color from Blue (low SNR) to Red (high SNR)
+        // As normalizedSnr goes from 0 to 1, red increases and blue decreases.
+        val red = (255 * normalizedSnr).toInt()
+        val blue = (255 * (1 - normalizedSnr)).toInt()
+        val green = 0
 
-            val parser = tlvParserMap[tlvType]
-
-            if (parser != null) {
-                val tlvPayload = payloadBuffer.slice().order(ByteOrder.LITTLE_ENDIAN)
-                tlvPayload.limit(tlvLength)
-                parser(tlvPayload, tlvLength, frameData)
-            } else {
-                logBuilder.append("  [TLV #$i] Type: $tlvType (Skipped)\n")
-            }
-            payloadBuffer.position(payloadBuffer.position() + tlvLength)
-        }
-
-        // --- Log Parsed Data ---
-        if (frameData.targets.isNotEmpty()) {
-            logBuilder.append("--- Parsed Targets (${frameData.targets.size}) ---\n")
-            frameData.targets.forEach { target ->
-                logBuilder.append(
-                    String.format(
-                        "  ID: %-4d | Pos(X,Y,Z): (%6.2f, %6.2f, %6.2f) | Vel(X,Y,Z): (%6.2f, %6.2f, %6.2f)\n",
-                        target.tid, target.posX, target.posY, target.posZ, target.velX, target.velY, target.velZ
-                    )
-                )
-            }
-        }
-        if (frameData.points.isNotEmpty()) {
-            logBuilder.append("--- Parsed Points (${frameData.points.size}) ---\n")
-            frameData.points.forEach { point ->
-                logBuilder.append(
-                    String.format(
-                        "  Pos(X,Y,Z): (%6.2f, %6.2f, %6.2f) | Doppler: %6.2f | SNR: %4.1f | Noise: %4.1f\n",
-                        point.x, point.y, point.z, point.doppler, point.snr, point.noise
-                    )
-                )
-            }
-        }
-        logBuilder.append("=====================================================\n")
-
-        // Write the complete entry to the file
-        fileLogger.log(logBuilder.toString())
-
-        // Update the UI as before
-        updateParsedDataUI(frameData)
-    }*/
-
-/*
-    private fun processFrame(frameBytes: ByteArray) {
-        val header = parseHeader(frameBytes.copyOfRange(0, 40))
-        if (header == null) {
-            logToConsole("!! PARSER ERROR: Failed to parse frame header.", isError = true)
-            fileLogger.log("!! PARSER ERROR: Failed to parse frame header.")
-            return
-        }
-
-        val frameData = ParsedFrameData(header.frameNum, header.numDetectedObj)
-        val payloadBytes = frameBytes.copyOfRange(40, frameBytes.size)
-        val payloadBuffer = ByteBuffer.wrap(payloadBytes).order(ByteOrder.LITTLE_ENDIAN)
-
-        // --- Start Log Entry ---
-        val logBuilder = StringBuilder()
-        logBuilder.append("=====================================================\n")
-        logBuilder.append("Frame: ${header.frameNum}, Detected Objects: ${header.numDetectedObj}, TLVs: ${header.numTLVs}\n")
-
-        // --- NEW DEBUGGING: Check for Point Cloud TLVs ---
-        var pointCloudTlvFound = false
-        var sideInfoTlvFound = false
-
-        for (i in 0 until header.numTLVs) {
-            if (payloadBuffer.remaining() < 8) { break }
-            val tlvType = payloadBuffer.int
-            val tlvLength = payloadBuffer.int
-
-            // Check for the specific TLV types we need for point cloud
-            if (tlvType == MMWDEMO_OUTPUT_MSG_DETECTED_POINTS) pointCloudTlvFound = true
-            if (tlvType == MMWDEMO_OUTPUT_MSG_DETECTED_POINTS_SIDE_INFO) sideInfoTlvFound = true
-
-            val parser = tlvParserMap[tlvType]
-            if (parser != null) {
-                val tlvPayload = payloadBuffer.slice().order(ByteOrder.LITTLE_ENDIAN)
-                tlvPayload.limit(tlvLength)
-                parser(tlvPayload, tlvLength, frameData)
-            }
-            payloadBuffer.position(payloadBuffer.position() + tlvLength)
-        }
-
-        // Log the results of our check to the console and file
-        val debugMsg = "Point Cloud TLV (Type 1) Found: $pointCloudTlvFound, Side Info TLV (Type 7) Found: $sideInfoTlvFound"
-        appendToConsole("  -> $debugMsg")
-        logBuilder.append("  $debugMsg\n")
-
-        // --- Log Parsed Data (rest of the function is the same) ---
-        if (frameData.targets.isNotEmpty()) {
-            logBuilder.append("--- Parsed Targets (${frameData.targets.size}) ---\n")
-            frameData.targets.forEach { target ->
-                logBuilder.append(
-                    String.format(
-                        "  ID: %-4d | Pos(X,Y,Z): (%6.2f, %6.2f, %6.2f)\n",
-                        target.tid, target.posX, target.posY, target.posZ
-                    )
-                )
-            }
-        }
-        logBuilder.append("=====================================================\n")
-        fileLogger.log(logBuilder.toString())
-        updateParsedDataUI(frameData)
+        return Color.rgb(red, green, blue)
     }
-*/
+
+    // --- UPDATED: This function now updates both the text view and the chart ---
+    // In MainActivity.kt
+// Replace your existing updateParsedDataUI function with this final version
+
+    // In MainActivity.kt
+// Replace your existing updateParsedDataUI function with this one
 
     private fun updateParsedDataUI(frameData: ParsedFrameData) {
         runOnUiThread {
-            // Display the number of points detected in this frame.
+            // Update the text view as before
             parsedDataText.text = "Frame: ${frameData.frameNum}, Points: ${frameData.points.size}"
 
-            // If there are any points, log the details of the first one to the console.
+            val entries = ArrayList<Entry>()
+            val colors = ArrayList<Int>()
+
             if (frameData.points.isNotEmpty()) {
-                val firstPoint = frameData.points.first()
-                val pointString = String.format(
-                    "First Point: X: %.2f, Y: %.2f, Z: %.2f, SNR: %.1f",
-                    firstPoint.x, firstPoint.y, firstPoint.z, firstPoint.snr
-                )
-                appendToConsole("   $pointString")
+                for (point in frameData.points) {
+                    // --- ROBUSTNESS FIX ---
+                    // Before adding a point to the chart, check that its coordinates are valid.
+                    // isFinite() returns false for both NaN and Infinity.
+                    if (point.x.isFinite() && point.y.isFinite()) {
+                        entries.add(Entry(point.x, point.y))
+                        colors.add(getColorForSNR(point.snr))
+                    }
+                }
+
+                // Log the first point to the console (if it exists and is valid)
+                if (entries.isNotEmpty()) {
+                    val firstPoint = frameData.points.first()
+                    val pointString = String.format(
+                        "First Point: X: %.2f, Y: %.2f, Z: %.2f, SNR: %.1f",
+                        firstPoint.x, firstPoint.y, firstPoint.z, firstPoint.snr
+                    )
+                    appendToConsole("   $pointString")
+                }
             }
-        }
-    }
-    private fun updateParsedDataUI(frameNumber: Int, points: List<RadarPoint>) {
-        runOnUiThread {
-            parsedDataText.text = "Frame: $frameNumber, Points: ${points.size}"
-            if (points.isNotEmpty()) {
-                val firstPoint = points.first()
-                val pointString = String.format(
-                    "First Point: X: %.2f, Y: %.2f, Z: %.2f, SNR: %.1f",
-                    firstPoint.x, firstPoint.y, firstPoint.z, firstPoint.snr
-                )
-                appendToConsole("   $pointString")
+
+            // If there are no valid points, clear the chart. Otherwise, update it.
+            if (entries.isEmpty()) {
+                scatterChart.clear()
+                return@runOnUiThread
             }
+
+            val dataSet = ScatterDataSet(entries, "Detected Points")
+            dataSet.setColors(colors)
+            dataSet.setScatterShape(ScatterChart.ScatterShape.CIRCLE)
+            dataSet.scatterShapeSize = 12f
+
+            val dataSets = ArrayList<IScatterDataSet>()
+            dataSets.add(dataSet)
+
+            val scatterData = ScatterData(dataSets)
+            scatterData.setDrawValues(false)
+
+            scatterChart.data = scatterData
+            scatterChart.invalidate()
         }
     }
 
     private fun findMagicWord(data: ByteArray): Int {
-        for (i in 0..data.size - UART_MAGIC_WORD.size) {
-            val window = data.sliceArray(i until i + UART_MAGIC_WORD.size)
-            if (window.contentEquals(UART_MAGIC_WORD)) {
+        val magicWord = UART_MAGIC_WORD
+        for (i in 0..data.size - magicWord.size) {
+            val window = data.sliceArray(i until i + magicWord.size)
+            if (window.contentEquals(magicWord)) {
                 return i
             }
         }
@@ -536,6 +371,7 @@ class MainActivity : AppCompatActivity(), SerialInputOutputManager.Listener {
     private fun resetParserState() {
         dataBuffer.reset()
         currentParsingState = ParsingState.WAITING_FOR_MAGIC
+        runOnUiThread { scatterChart.clear() } // Clear the chart when resetting
     }
 
     private fun openPort() {
@@ -600,54 +436,6 @@ class MainActivity : AppCompatActivity(), SerialInputOutputManager.Listener {
         }.start()
     }
 
-    // In MainActivity.kt
-
-    /*private fun configureBoard() {
-        if (activePort == null || !activePort!!.isOpen) {
-            logToConsole("Cannot configure. Port is not open.", isError = true)
-            return
-        }
-
-        Thread {
-            try {
-                // --- Step 1: Clear any stale data from the input buffer ---
-                activePort!!.purgeHwBuffers(true, false)
-                logToConsole("Input buffer purged.")
-
-                for (command in CONFIG_COMMANDS) {
-                    val commandWithTerminator = "$command\n"
-                    activePort!!.write(commandWithTerminator.toByteArray(), 500)
-                    appendToConsole(">> $command")
-                    Thread.sleep(50) // 50ms delay between commands
-
-                    if (command.startsWith("baudRate")) {
-                        // --- Step 2: Critical timing for baud rate change ---
-                        logToConsole("Baud rate command sent. Pausing for board to reconfigure...")
-
-                        // Wait a bit longer here to give the board time to process the command
-                        Thread.sleep(200)
-
-                        try {
-                            val newBaudRate = command.split(" ")[1].toInt()
-                            logToConsole("Updating app's port to new baud rate: $newBaudRate")
-                            activePort!!.setParameters(newBaudRate, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
-
-                            // A final short pause for the port to settle
-                            Thread.sleep(100)
-                            logToConsole("App's port reconfigured. Ready for high-speed data.")
-
-                        } catch (e: Exception) {
-                            logToConsole("Failed to parse or set new baud rate: ${e.message}", isError = true)
-                            break
-                        }
-                    }
-                }
-                logToConsole("Configuration sequence sent. Listening for data...")
-            } catch (e: IOException) {
-                logToConsole("Error sending commands: ${e.message}", isError = true)
-            }
-        }.start()
-    }*/
     private fun closePort() {
         resetParserState()
         portIoManager?.stop()

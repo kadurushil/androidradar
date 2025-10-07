@@ -1,92 +1,93 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:padding="8dp"
+    android:background="#212121"
     tools:context=".MainActivity">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="#303030"
+        android:padding="8dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <Spinner
+                android:id="@+id/deviceSpinner"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:backgroundTint="@android:color/white"/>
+            <Button
+                android:id="@+id/refreshButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Refresh"/>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+            <Button
+                android:id="@+id/openPortButton"
+                style="?android:attr/buttonBarButtonStyle"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:text="Open"/>
+            <Button
+                android:id="@+id/configureButton"
+                style="?android:attr/buttonBarButtonStyle"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:text="Configure"/>
+            <Button
+                android:id="@+id/closePortButton"
+                style="?android:attr/buttonBarButtonStyle"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:text="Close"/>
+        </LinearLayout>
+    </LinearLayout>
 
     <TextView
         android:id="@+id/parsedDataText"
         android:layout_width="match_parent"
-        android:layout_height="223dp"
-        android:background="#333333"
-        android:gravity="center"
-        android:padding="8dp"
+        android:layout_height="wrap_content"
         android:text="Parsed Data: Waiting..."
         android:textColor="@android:color/white"
-        android:textSize="16sp"
-        android:textStyle="bold" />
+        android:padding="8dp"/>
 
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:layout_marginTop="8dp">
-
-        <Spinner
-            android:id="@+id/deviceSpinner"
-            android:layout_width="0dp"
-            android:layout_height="48dp"
-            android:layout_weight="1"/>
-
-        <Button
-            android:id="@+id/refreshButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:text="Refresh"/>
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center">
-
-        <Button
-            android:id="@+id/openPortButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Open Port"/>
-
-        <Button
-            android:id="@+id/configureButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:enabled="false"
-            android:text="Configure"/>
-
-        <Button
-            android:id="@+id/closePortButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:enabled="false"
-            android:text="Close Port"/>
-    </LinearLayout>
-
-    <ScrollView
-        android:id="@+id/consoleScrollView"
+    <com.github.mikephil.charting.charts.ScatterChart
+        android:id="@+id/scatterChart"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:layout_marginTop="8dp"
-        android:background="#1E1E1E">
-
+        android:layout_marginBottom="8dp"/>
+    <ScrollView
+        android:id="@+id/consoleScrollView"
+        android:layout_width="match_parent"
+        android:layout_height="150dp"
+        android:background="#121212"
+        android:padding="4dp">
         <TextView
             android:id="@+id/consoleText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:padding="8dp"
-            android:textColor="#D4D4D4"
-            android:textSize="12sp"
             android:typeface="monospace"
-            android:textIsSelectable="true"/>
+            android:textColor="@android:color/white"/>
     </ScrollView>
 
 </LinearLayout>
