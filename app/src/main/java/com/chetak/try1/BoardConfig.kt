@@ -1,0 +1,30 @@
+package com.chetak.try1
+
+val CONFIG_COMMANDS = listOf(
+    "sensorStop 0",
+    "channelCfg 7 3 0",
+    "chirpComnCfg 8 0 0 256 4 28 0",
+    "chirpTimingCfg 6 63 0 75 77",
+    "frameCfg 2 0 200 64 250 0",
+    "guiMonitor 2 1 0 0 0 1 0 0 0 0 0",
+    "sigProcChainCfg 32 2 1 0 4 4 0 15",
+    "cfarCfg 2 8 4 3 0 12.0 0 0.5 0 1 1 1",
+    "aoaFovCfg -60 60 -40 40",
+    "rangeSelCfg 0.1 12.0",
+    "clutterRemoval 1",
+    "compRangeBiasAndRxChanPhase 0.0 1.00000 0.00000 -1.00000 0.00000 1.00000 0.00000 -1.00000 0.00000 1.00000 0.00000 -1.00000 0.00000",
+    "adcDataSource 0 C:/ti/mmwave_lp_sdk/examples/datapath/common/testBench/major_motion/adc_data_0001_CtestAdc6Ant.bin",
+    "adcLogging 0",
+    "lowPowerCfg 1",
+    "factoryCalibCfg 1 0 40 0 0x1ff000",
+    "mpdBoundaryBox 1 0 1.48 0 1.95 0 3",
+    "mpdBoundaryBox 2 0 1.48 1.95 3.9 0 3",
+    "mpdBoundaryBox 3 -1.48 0 0 1.95 0 3",
+    "mpdBoundaryBox 4 -1.48 0 1.95 3.9 0 3",
+    "sensorPosition 0 0 1.44 0 0",
+    "minorStateCfg 5 4 40 8 4 30 8 8",
+    "majorStateCfg 4 2 30 10 8 80 4 4",
+    "clusterCfg 1 0.5 2",
+    "baudRate 1250000",
+    "sensorStart 0 0 0 0"
+)
