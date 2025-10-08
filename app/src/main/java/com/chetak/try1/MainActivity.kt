@@ -35,6 +35,8 @@ import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import android.os.Looper
+import android.widget.Toast
 
 class MainActivity : AppCompatActivity(), SerialInputOutputManager.Listener {
 
@@ -205,8 +207,24 @@ class MainActivity : AppCompatActivity(), SerialInputOutputManager.Listener {
     }
 
     override fun onRunError(e: Exception) {
-        logToConsole("Communication Error: ${e.message}", isError = true)
-        closePort()
+        // Log the error (non-UI)
+        e.printStackTrace()
+
+        // Now perform all UI and port-close related actions on the main thread.
+        runOnMain {
+            // show a toast so user sees the error
+            Toast.makeText(this@MainActivity, "Serial IO error: ${e.message}", Toast.LENGTH_LONG).show()
+
+            // safe close of port and UI updates
+            try {
+                closePort() // closePort below also uses runOnMain for safety if needed
+            } catch (ex: Exception) {
+                ex.printStackTrace()
+            }
+
+            // optionally update UI state (if not handled in closePort)
+            updateButtonStates()
+        }
     }
 
     private fun processFrame(frameBytes: ByteArray) {
@@ -444,16 +462,30 @@ class MainActivity : AppCompatActivity(), SerialInputOutputManager.Listener {
     }
 
     private fun closePort() {
-        resetParserState()
-        portIoManager?.stop()
-        portIoManager = null
+        // Stop SerialInputOutputManager safely
+        try {
+            portIoManager?.stop()
+            portIoManager = null
+        } catch (ignored: Exception) {}
+
+        // Close the serial port
         try {
             activePort?.close()
-            logToConsole("Port closed.")
-        } catch (e: IOException) { /* Ignore */ }
-        activePort = null
-        updateButtonStates()
-        runOnUiThread { parsedDataText.text = "Parsed Data: Waiting..." }
+            activePort = null
+        } catch (ignored: Exception) {}
+
+        // UI updates on main thread
+        runOnMain {
+            try {
+                openPortButton.isEnabled = true
+                closePortButton.isEnabled = false
+                configureButton.isEnabled = true
+                parsedDataText.text = "Port closed"
+                logToConsole("Port closed successfully.")
+            } catch (ex: Exception) {
+                ex.printStackTrace()
+            }
+        }
     }
 
     private fun refreshDeviceList() {
@@ -470,13 +502,18 @@ class MainActivity : AppCompatActivity(), SerialInputOutputManager.Listener {
     }
 
     private fun updateButtonStates() {
-        val portIsOpen = activePort?.isOpen ?: false
-        openPortButton.isEnabled = !portIsOpen
-        configureButton.isEnabled = portIsOpen
-        closePortButton.isEnabled = portIsOpen
-        refreshButton.isEnabled = !portIsOpen
-        deviceSpinner.isEnabled = !portIsOpen
+        runOnMain {
+            try {
+                val connected = (activePort != null && activePort!!.isOpen)
+                openPortButton.isEnabled = !connected
+                closePortButton.isEnabled = connected
+                configureButton.isEnabled = connected
+            } catch (ex: Exception) {
+                ex.printStackTrace()
+            }
+        }
     }
+
 
     private fun appendToConsole(message: String, isIncoming: Boolean = false, isError: Boolean = false) {
         runOnUiThread {
@@ -508,5 +545,13 @@ class MainActivity : AppCompatActivity(), SerialInputOutputManager.Listener {
         unregisterReceiver(usbPermissionReceiver)
         fileLogger.close()
         super.onDestroy()
+    }
+    // Helper: ensures block runs on main thread
+    private fun runOnMain(block: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            block()
+        } else {
+            runOnUiThread { block() }
+        }
     }
 }
