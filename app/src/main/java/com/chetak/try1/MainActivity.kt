@@ -129,10 +129,7 @@ class MainActivity : AppCompatActivity(), SerialInputOutputManager.Listener {
         scatterChart.setScaleEnabled(true)
         scatterChart.setPinchZoom(true)
         scatterChart.setDrawGridBackground(true)
-
-        // --- CORRECTED LINE ---
-        scatterChart.setGridBackgroundColor(Color.DKGRAY) // Use the setter method
-
+        scatterChart.setGridBackgroundColor(Color.DKGRAY)
         scatterChart.legend.isEnabled = false
 
         // Configure X Axis
@@ -140,8 +137,8 @@ class MainActivity : AppCompatActivity(), SerialInputOutputManager.Listener {
         scatterChart.xAxis.gridColor = Color.GRAY
         scatterChart.xAxis.axisLineColor = Color.WHITE
         scatterChart.xAxis.setLabelCount(6, true)
-        scatterChart.xAxis.axisMinimum = -10f
-        scatterChart.xAxis.axisMaximum = 10f
+        scatterChart.xAxis.axisMinimum = -5f
+        scatterChart.xAxis.axisMaximum = 5f
 
         // Configure Y Axis
         scatterChart.axisLeft.textColor = Color.WHITE
@@ -149,9 +146,14 @@ class MainActivity : AppCompatActivity(), SerialInputOutputManager.Listener {
         scatterChart.axisLeft.axisLineColor = Color.WHITE
         scatterChart.axisLeft.setLabelCount(6, true)
         scatterChart.axisLeft.axisMinimum = 0f
-        scatterChart.axisLeft.axisMaximum = 20f
+        scatterChart.axisLeft.axisMaximum = 10f
 
         scatterChart.axisRight.isEnabled = false
+
+        // --- NEW LOGIC ---
+        // Create an empty data object and set it to the chart once.
+        // We will update this object later instead of creating a new one every time.
+        scatterChart.data = ScatterData()
     }
 
     override fun onNewData(data: ByteArray) {
@@ -297,55 +299,60 @@ class MainActivity : AppCompatActivity(), SerialInputOutputManager.Listener {
 
     private fun updateParsedDataUI(frameData: ParsedFrameData) {
         runOnUiThread {
-            // Update the text view as before
             parsedDataText.text = "Frame: ${frameData.frameNum}, Points: ${frameData.points.size}"
 
+            // 1) Build entries & colors, filtering invalid numbers.
             val entries = ArrayList<Entry>()
             val colors = ArrayList<Int>()
 
-            if (frameData.points.isNotEmpty()) {
-                for (point in frameData.points) {
-                    // --- ROBUSTNESS FIX ---
-                    // Before adding a point to the chart, check that its coordinates are valid.
-                    // isFinite() returns false for both NaN and Infinity.
-                    if (point.x.isFinite() && point.y.isFinite()) {
-                        entries.add(Entry(point.x, point.y))
-                        colors.add(getColorForSNR(point.snr))
-                    }
-                }
-
-                // Log the first point to the console (if it exists and is valid)
-                if (entries.isNotEmpty()) {
-                    val firstPoint = frameData.points.first()
-                    val pointString = String.format(
-                        "First Point: X: %.2f, Y: %.2f, Z: %.2f, SNR: %.1f",
-                        firstPoint.x, firstPoint.y, firstPoint.z, firstPoint.snr
-                    )
-                    appendToConsole("   $pointString")
+            for (point in frameData.points) {
+                if (point.x.isFinite() && point.y.isFinite()) {
+                    entries.add(Entry(point.x, point.y))
+                    colors.add(getColorForSNR(point.snr))
+                } else {
+                    // Optionally log filtered points for debugging:
+                    // fileLogger.log("Filtered invalid point: x=${point.x} y=${point.y} snr=${point.snr}")
                 }
             }
 
-            // If there are no valid points, clear the chart. Otherwise, update it.
+            // 2) If no valid entries, clear the chart and return early.
             if (entries.isEmpty()) {
-                scatterChart.clear()
+                // Clear data on UI thread safely
+                scatterChart.data = ScatterData()
+                scatterChart.clear()            // clears datasets and renderer state
+                scatterChart.invalidate()
                 return@runOnUiThread
             }
 
+            // 3) Ensure the color list is at least as long as entries (chart will cycle colors otherwise,
+            // but we keep it explicit)
+            if (colors.size < entries.size) {
+                val defaultColor = Color.WHITE
+                while (colors.size < entries.size) colors.add(defaultColor)
+            }
+
+            // 4) Create dataset and set defensive properties
             val dataSet = ScatterDataSet(entries, "Detected Points")
             dataSet.setColors(colors)
             dataSet.setScatterShape(ScatterChart.ScatterShape.CIRCLE)
             dataSet.scatterShapeSize = 12f
 
-            val dataSets = ArrayList<IScatterDataSet>()
-            dataSets.add(dataSet)
+            // CRITICAL: Disable drawing of value labels to avoid drawValues crash
+            dataSet.setDrawValues(false)
 
-            val scatterData = ScatterData(dataSets)
-            scatterData.setDrawValues(false)
+            // Optional: disable icons too
+            dataSet.setDrawIcons(false)
 
+            // 5) Create a new ScatterData and set it to the chart.
+            val scatterData = ScatterData(dataSet)
+
+            // Replace data and notify chart so internal buffers are rebuilt correctly
             scatterChart.data = scatterData
+            scatterChart.notifyDataSetChanged()
             scatterChart.invalidate()
         }
     }
+
 
     private fun findMagicWord(data: ByteArray): Int {
         val magicWord = UART_MAGIC_WORD

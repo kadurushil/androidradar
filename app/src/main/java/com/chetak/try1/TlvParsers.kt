@@ -29,8 +29,8 @@ fun parsePointCloudExtTLV(payload: ByteBuffer, tlvLength: Int, frameData: Parsed
         val yRaw = payload.short
         val zRaw = payload.short
         val dopplerRaw = payload.short
-        val snrRaw = payload.get()
-        val noiseRaw = payload.get()
+        val snrRaw = payload.get().toUByte().toInt()
+        val noiseRaw = payload.get().toUByte().toInt()
 
         // Decompress the values using the units from the header
         val point = RadarPoint(
