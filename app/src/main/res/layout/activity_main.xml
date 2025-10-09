@@ -1,93 +1,128 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/rootConstraint"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="8dp"
-    android:background="#212121"
-    tools:context=".MainActivity">
+    android:padding="8dp">
 
+    <!-- Top control bar (device spinner + buttons) -->
     <LinearLayout
-        android:layout_width="match_parent"
+        android:id="@+id/topControls"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:background="#303030"
-        android:padding="8dp">
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="4dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
-            <Spinner
-                android:id="@+id/deviceSpinner"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="wrap_content"
-                android:backgroundTint="@android:color/white"/>
-            <Button
-                android:id="@+id/refreshButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Refresh"/>
-        </LinearLayout>
+        <!-- renamed spinner id to deviceSpinner to match MainActivity.kt -->
+        <Spinner
+            android:id="@+id/deviceSpinner"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp" />
 
-        <LinearLayout
-            android:layout_width="match_parent"
+        <!-- renamed to match MainActivity.kt -->
+        <Button
+            android:id="@+id/refreshButton"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:orientation="horizontal">
-            <Button
-                android:id="@+id/openPortButton"
-                style="?android:attr/buttonBarButtonStyle"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="wrap_content"
-                android:text="Open"/>
-            <Button
-                android:id="@+id/configureButton"
-                style="?android:attr/buttonBarButtonStyle"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="wrap_content"
-                android:text="Configure"/>
-            <Button
-                android:id="@+id/closePortButton"
-                style="?android:attr/buttonBarButtonStyle"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="wrap_content"
-                android:text="Close"/>
-        </LinearLayout>
+            android:text="Refresh"/>
+
+        <Button
+            android:id="@+id/openPortButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Open"/>
+
+        <Button
+            android:id="@+id/configureButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Configure"/>
+
+        <Button
+            android:id="@+id/closePortButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Close"/>
     </LinearLayout>
 
+    <!-- optional parsed-data text (added) -->
     <TextView
         android:id="@+id/parsedDataText"
-        android:layout_width="match_parent"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="Parsed Data: Waiting..."
+        android:text="Parsed: -"
         android:textColor="@android:color/white"
-        android:padding="8dp"/>
+        android:paddingTop="4dp"
+        app:layout_constraintTop_toBottomOf="@id/topControls"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
 
-    <com.github.mikephil.charting.charts.ScatterChart
-        android:id="@+id/scatterChart"
-        android:layout_width="match_parent"
+    <!-- Main content: Camera preview (left) and Radar chart (right) -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/contentContainer"
+        android:layout_width="0dp"
         android:layout_height="0dp"
-        android:layout_weight="1"
-        android:layout_marginTop="8dp"
-        android:layout_marginBottom="8dp"/>
+        app:layout_constraintTop_toBottomOf="@id/parsedDataText"
+        app:layout_constraintBottom_toTopOf="@+id/consoleScrollView"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <!-- Camera preview (optional) -->
+        <androidx.camera.view.PreviewView
+            android:id="@+id/previewView"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_marginEnd="8dp"
+            android:clipToPadding="false"
+            android:scaleType="fitCenter"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toStartOf="@+id/chartContainer"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintVertical_bias="1.0" />
+
+        <!-- Right side container for chart -->
+        <FrameLayout
+            android:id="@+id/chartContainer"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toEndOf="@id/previewView"
+            app:layout_constraintEnd_toEndOf="parent">
+
+            <com.github.mikephil.charting.charts.ScatterChart
+                android:id="@+id/scatterChart"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"/>
+        </FrameLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <!-- Console (bottom) : renamed ids to match MainActivity.kt -->
     <ScrollView
         android:id="@+id/consoleScrollView"
-        android:layout_width="match_parent"
-        android:layout_height="150dp"
-        android:background="#121212"
-        android:padding="4dp">
+        android:layout_width="0dp"
+        android:layout_height="110dp"
+        android:layout_marginTop="8dp"
+        android:fillViewport="true"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/contentContainer">
+
         <TextView
             android:id="@+id/consoleText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:typeface="monospace"
-            android:textColor="@android:color/white"/>
+            android:padding="8dp"
+            android:textColor="@android:color/white"
+            android:textIsSelectable="true" />
     </ScrollView>
 
-</LinearLayout>
+</androidx.constraintlayout.widget.ConstraintLayout>
